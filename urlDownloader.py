@@ -10,9 +10,10 @@ from langdetect import detect
 import pymysql
 import furl
 import nltk
+import enchant
 from nltk.corpus import stopwords
 stop = stopwords.words('english')
-
+dictionary = enchant.Dict("en_US")
 #check's what kind of delimiter a url string contains
 #most of times is a - or _
 def whichDelimiterUrlStringContains(urlstr):
@@ -32,11 +33,16 @@ def whichDelimiterUrlStringContains(urlstr):
 
 #takes a delimited word that is a multiple word and returns the words on a list
 def urlPathToWords(word,delimiter,words_list):
-    sentence=word.replace(delimiter, " ")
-    tokens= nltk.word_tokenize(sentence)
-    #tokens2=[x for x in tokens if x not in stop]
+    if delimiter=="":
+        tokens=nltk.word_tokenize(word)
+    else:
+        sentence=word.replace(delimiter, " ")
+        tokens= nltk.word_tokenize(sentence)
+        #tokens2=[x for x in tokens if x not in stop]
     for tk in tokens:
-        words_list.append(tk)
+        if dictionary.check(tk):
+            words_list.append(tk)
+            
 #takes a url, and by reference the domain , the paths list and the word tokens of the paths    
 def urlTooler(url,domain,paths_list,words_list):
     f=furl.furl(url)
@@ -54,6 +60,9 @@ def urlTooler(url,domain,paths_list,words_list):
                 paths_list.append(p)
                 for w in w_l:
                     words_list.append(w)
+            else:
+                w_l=[]
+                urlPathToWords(p,"",w_l)
                         
               
     if (not f.fragment==""):
@@ -66,6 +75,9 @@ def urlTooler(url,domain,paths_list,words_list):
                 paths_list.append(p)
                 for w in w_l:
                     words_list.append(w)
+            else:
+                w_l=[]
+                urlPathToWords(p,"",w_l)
 
 
 #writes on a filename a text (string)       
@@ -282,14 +294,72 @@ def downloadPages(startLine=0,breakNumber=0):
 
     writeToFile("d:/webtechnology/domainsFrequency2.txt",strData)
 
+def urlTokenizeData():
+    conn = pymysql.connect(host='127.0.0.1', user='root', passwd='Fireblade', db='webtechnology')
+    cur = conn.cursor()
+    cur1= conn.cursor()
+    cur.execute("SELECT rowId,expandedurl,title,tweet_text FROM webtechnology.urls where language='en'")
+    for r in cur:
+        print("#" +str(r[0]))
+        domain=[]
+        paths_list=[]
+        words_list=[]
+        urlTooler(r[1],domain,paths_list,words_list)
 
-domain=[]
-paths_list=[]
-words_list=[]
-urlTooler("https://gigaom.com/2014/09/28/eu-home-affairs-chief-secretly-worked-with-us-to-undermine-new-privacy-laws-campaigners-claim/",domain,paths_list,words_list)
-print(domain)
-print(paths_list)
-print(words_list)
+        sql = "update webtechnology.urls set domain='"+ domain[0]  +"' where rowid="+str(r[0])               
+       
+        cur1.execute(sql)
+        conn.commit()
+
+        for p in paths_list:
+            sql = "insert into webtechnology.url_paths (rowid,path) values ("+ str(r[0])+",'"+p.replace("'","''")+"')"
+            #print(sql)
+            cur1.execute(sql)
+            conn.commit()
+        
+        for w in  words_list:
+            sql = "insert into webtechnology.tokensurl (rowid,token) values ("+ str(r[0])+",'"+w.replace("'","''")+"')"
+            #print(sql)
+            cur1.execute(sql)
+            conn.commit()
+
+        titles_list=[]
+        
+        urlPathToWords(r[2],"",titles_list)
+        for t in  titles_list:
+            sql = "insert into webtechnology.tokenstitle (rowid,token) values ("+ str(r[0])+",'"+t.replace("'","''")+"')"
+            #print(sql)
+            cur1.execute(sql)
+            conn.commit()
+
+        tweets_list=[]
+        urlPathToWords(r[3],"", tweets_list)
+        
+        for tw in tweets_list:
+            sql = "insert into webtechnology.tokenstweet (rowid,token) values ("+ str(r[0])+",'"+tw.replace("'","''")+"')"
+            cur1.execute(sql)
+            conn.commit()
+        
+        #print(domain)
+
+        #print(paths_list)
+        #print(words_list)
+
+
+        
+    cur.close()
+    conn.close()
+
+    
+urlTokenizeData()
+
+#domain=[]
+#paths_list=[]
+#words_list=[]
+#urlTooler("http://www.krellinst.org/csgf/conf/2014/video/kantypas",domain,paths_list,words_list)
+#print(domain)
+#print(paths_list)
+#print(words_list)
 
 
 #
